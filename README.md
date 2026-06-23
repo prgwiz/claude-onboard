@@ -38,6 +38,9 @@ curl -fsSL https://raw.githubusercontent.com/prgwiz/claude-onboard/main/onboard-
 
 # install AND link a repo you already have:
 curl -fsSL https://raw.githubusercontent.com/prgwiz/claude-onboard/main/onboard-claude.sh | SYNC_MODE=existing SYNC_REPO=https://github.com/you/your-memory.git bash
+
+# also install the Harbour (xBase) language rules (opt-in):
+curl -fsSL https://raw.githubusercontent.com/prgwiz/claude-onboard/main/onboard-claude.sh | HARBOUR=1 bash
 ```
 
 After it finishes: run `claude`, log in when prompted, and if you enabled sync,
@@ -60,10 +63,25 @@ hooks in `~/.claude/settings.local.json`:
 - **SessionStart** → `git pull` your latest memory.
 - **Stop** → commit and push any memory changes (async).
 
+## Harbour (xBase) projects — optional
+
+If you work on Harbour projects, opt in with `--harbour` (or `HARBOUR=1`, or just
+answer **y** at the prompt). It clones
+[EricLendvai/harbour-language-for-ai-training](https://github.com/EricLendvai/harbour-language-for-ai-training)
+to `~/Sandbox/harbour-ai-rules` (override with `HARBOUR_DIR=...`) and writes a
+conventions `CLAUDE.md` beside it, so Claude consults the rulebook and function
+allowlist for `.prg` work. It's **off by default** and skipped entirely otherwise.
+
+```bash
+bash onboard-claude.sh --harbour
+# over curl:  curl -fsSL <raw-url> | HARBOUR=1 bash
+```
+
 ## What it does *not* do
 
 - It does **not** install anyone else's permission allowlist or project-specific
-  `CLAUDE.md` / language rules — those belong in each project's own repo.
+  `CLAUDE.md` — those belong in each project's own repo. (The Harbour language
+  rules above are the one exception, and only when you opt in.)
 - It does **not** store or transmit any credentials. Anthropic login is
   interactive; GitHub auth uses your own `gh` session.
 

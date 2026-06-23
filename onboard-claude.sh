@@ -21,6 +21,10 @@
 #   SYNC_MODE=none                                              ./onboard-claude.sh
 #   SYNC_MODE=create   SYNC_REPO=claude-memory                  ./onboard-claude.sh
 #   SYNC_MODE=existing SYNC_REPO=https://github.com/me/mem.git  ./onboard-claude.sh
+#
+# Optional Harbour (xBase) AI language rules, for teammates on Harbour projects:
+#   --harbour flag, or HARBOUR=1 env var, or answer the interactive prompt.
+#   (Off by default; clones EricLendvai/harbour-language-for-ai-training.)
 
 set -euo pipefail
 
@@ -33,6 +37,26 @@ CLAUDE_DIR="$HOME/.claude"
 SYNC_DIR="${SYNC_DIR:-$HOME/claude-sync}"
 SYNC_MODE="${SYNC_MODE:-}"     # none | existing | create   (prompted if unset)
 SYNC_REPO="${SYNC_REPO:-}"     # git URL, or owner/name, or bare name (create mode)
+HARBOUR="${HARBOUR:-}"         # 1 to install Harbour AI rules (prompted if unset)
+HARBOUR_DIR="${HARBOUR_DIR:-$HOME/Sandbox/harbour-ai-rules}"
+
+# --- CLI flags (override env; handy via `bash -s -- --harbour` over curl) ---
+for arg in "$@"; do
+  case "$arg" in
+    --harbour)    HARBOUR=1 ;;
+    --no-harbour) HARBOUR=0 ;;
+    --no-sync)    SYNC_MODE=none ;;
+    -h|--help)
+      cat <<'USAGE'
+onboard-claude.sh — install Claude Code, baseline config, optional memory sync + Harbour rules.
+  --harbour / --no-harbour   install (or skip) Harbour xBase AI language rules
+  --no-sync                  skip memory sync
+Env: SYNC_MODE=none|existing|create  SYNC_REPO=<url|owner/name>  HARBOUR=1  HARBOUR_DIR=<path>
+USAGE
+      exit 0 ;;
+    *) printf '[warn]  ignoring unknown argument: %s\n' "$arg" >&2 ;;
+  esac
+done
 
 pkg_install() {
   local missing=()
@@ -164,6 +188,57 @@ if [ "$SYNC_MODE" != "none" ]; then
   log "auto-sync hooks installed (pull on session start, commit+push on stop)"
 fi
 
+#--- 4. optional Harbour (xBase) AI language rules ----------------------------
+if [ -z "$HARBOUR" ] && [ -t 0 ]; then
+  read -rp "Install Harbour (xBase) AI language rules for project work? [y/N]: " ans
+  case "$(lc "$ans")" in y*) HARBOUR=1 ;; *) HARBOUR=0 ;; esac
+fi
+case "$(lc "${HARBOUR:-0}")" in 1|y|yes|true|on) HARBOUR=1 ;; *) HARBOUR=0 ;; esac
+
+if [ "$HARBOUR" = 1 ]; then
+  pkg_install git
+  RULES_REPO="https://github.com/EricLendvai/harbour-language-for-ai-training.git"
+  if [ -d "$HARBOUR_DIR/.git" ]; then
+    log "updating Harbour AI rules in $HARBOUR_DIR..."
+    git -C "$HARBOUR_DIR" pull --ff-only -q || warn "Harbour rules pull failed (non-fatal)"
+  else
+    log "cloning Harbour AI rules into $HARBOUR_DIR..."
+    mkdir -p "$(dirname "$HARBOUR_DIR")"
+    git clone -q "$RULES_REPO" "$HARBOUR_DIR" || warn "Harbour rules clone failed (non-fatal)"
+  fi
+
+  # Drop a conventions CLAUDE.md beside the rules so Claude finds them in Harbour work.
+  RULES_BASE="$(basename "$HARBOUR_DIR")"
+  HB_CLAUDE="$(dirname "$HARBOUR_DIR")/CLAUDE.md"
+  if [ -e "$HB_CLAUDE" ]; then
+    log "$HB_CLAUDE exists — leaving as-is"
+  else
+    log "writing $HB_CLAUDE..."
+    cat > "$HB_CLAUDE" <<HBDOC
+# Harbour (xBase) project conventions
+
+Projects under this directory are written in **Harbour**. Before generating
+non-trivial Harbour (\`.prg\`) code, consult the AI-targeted rulebook and
+function allowlist — they cut hallucinated functions and codify Harbour's
+scope / type / preprocessor semantics:
+
+- Rulebook: \`$RULES_BASE/harbour_language_rules.md\`
+- Function allowlist: \`$RULES_BASE/harbour_functions/harbour_functions_part_001.yaml\`
+- C <-> Harbour interop (only when touching \`#pragma BEGINDUMP\`):
+  \`$RULES_BASE/How_to_Interface_Between_C_and_Harbour/\`
+
+Load the rulebook **on demand** — it is ~200 KB, so don't pull it into context
+for trivial edits, but do consult it before non-trivial codegen or when a
+function / macro / scope rule is uncertain.
+
+Reference repo: https://github.com/EricLendvai/harbour-language-for-ai-training
+(cloned here as \`$RULES_BASE\`; run \`git -C $RULES_BASE pull\` to update).
+License: CC BY-NC-SA 4.0 — it is a context source for AI work; do not vendor
+copies of it into project repos.
+HBDOC
+  fi
+fi
+
 #--- done ---------------------------------------------------------------------
 cat <<EOF
 
@@ -176,5 +251,9 @@ EOF
   2. Inside Claude:  /hooks       (reloads config so the auto-sync Stop hook goes live)
   3. Memory now syncs to: $SYNC_REPO
      If pushes don't happen on exit, check ~/.claude/claude-sync.log
+EOF
+[ "$HARBOUR" = 1 ] && cat <<EOF
+  *  Harbour AI rules installed at: $HARBOUR_DIR
+     Conventions doc written to:    $(dirname "$HARBOUR_DIR")/CLAUDE.md
 EOF
 exit 0
